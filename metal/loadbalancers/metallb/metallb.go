@@ -130,9 +130,11 @@ func (l *LB) AddService(ctx context.Context, svcNamespace, svcName, ip string, n
 	}
 
 	// Update the service and configmap/IpAddressPool and save them
+	klog.V(2).Infof("adding ip for %s/%s", svcNamespace, svcName)	
 	if err := addIP(ctx, config, ip, svcNamespace, svcName, l.configurerType); err != nil {
 		return fmt.Errorf("unable to map IP to service: %w", err)
 	}
+	klog.V(2).Infof("updating nodes for %s/%s", svcNamespace, svcName)	
 	if err := l.updateNodes(ctx, svcNamespace, svcName, nodes); err != nil {
 		return fmt.Errorf("unable to add service: %w", err)
 	}
@@ -187,6 +189,7 @@ func (l *LB) updateNodes(ctx context.Context, svcNamespace, svcName string, node
 	var changed bool
 	var peersToUpdate []Peer
 	for _, node := range nodes {
+		klog.V(2).Infof("updating node %s for %s/%s", node.Name, svcNamespace, svcName)	
 		ns := []NodeSelector{
 			{MatchLabels: map[string]string{
 				hostnameKey: node.Name,

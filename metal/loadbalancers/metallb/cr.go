@@ -41,6 +41,7 @@ func (m *CRDConfigurer) UpdatePeersByService(ctx context.Context, adds *[]Peer, 
 	news := []metallbv1beta1.BGPPeer{}
 	toAdd := make(map[string]metallbv1beta1.BGPPeer)
 	for _, add := range *adds {
+		klog.V(2).Infof("preparing BGPPeer %s for %s/%s", add.Name, svcNamespace, svcName)	
 		peer := convertToBGPPeer(add, m.namespace, svcName)
 		news = append(news, peer)
 		toAdd[peer.Name] = peer
@@ -48,6 +49,7 @@ func (m *CRDConfigurer) UpdatePeersByService(ctx context.Context, adds *[]Peer, 
 
 	// if there is no Peers, add all the new ones
 	if len(olds.Items) == 0 {
+		klog.V(2).Info("no BGPPeers found, adding all")
 		for _, n := range news {
 			err = m.client.Create(ctx, &n)
 			if err != nil {
@@ -62,6 +64,7 @@ func (m *CRDConfigurer) UpdatePeersByService(ctx context.Context, adds *[]Peer, 
 		found := false
 		for _, n := range news {
 			if n.Name == o.GetName() {
+				klog.V(2).Infof("BGPPeer %s already exists", n.Name)
 				found = true
 				// remove from toAdd list
 				delete(toAdd, n.Name)
@@ -70,10 +73,12 @@ func (m *CRDConfigurer) UpdatePeersByService(ctx context.Context, adds *[]Peer, 
 				var update bool
 				// update services in node selectors
 				if peerAddService(&o, svcNamespace, svcName) {
+					klog.V(2).Infof("adding service %s/%s to BGPPeer %s", svcNamespace, svcName, n.Name)
 					update = true
 				}
 				// check specs
 				if !peerSpecEqual(o.Spec, n.Spec) {
+					klog.V(2).Infof("BGPPeer %s requires update", n.Name)
 					o.Spec = n.Spec
 					update = true
 				}
@@ -158,6 +163,8 @@ func (m *CRDConfigurer) AddAddressPool(ctx context.Context, add *AddressPool, sv
 		return false, fmt.Errorf("unable to retrieve service: %w", err)
 	}
 
+	updatedPool := false
+
 	// go through the pools and see if we have one that matches
 	// - if same service name return false
 	for _, o := range olds.Items {
@@ -237,14 +244,16 @@ func (m *CRDConfigurer) AddAddressPool(ctx context.Context, add *AddressPool, sv
 			if err != nil {
 				return false, fmt.Errorf("unable to update IPAddressPool %s: %w", o.GetName(), err)
 			}
-			return true, nil
+			updatedPool = true
 		}
 	}
 
-	// if we got here, none matched exactly, so add it
-	err = m.client.Create(ctx, &addIPAddr)
-	if err != nil {
-		return false, fmt.Errorf("unable to add IPAddressPool %s: %w", addIPAddr.GetName(), err)
+	if !updatedPool {
+		// if we got here, none matched exactly, so add it
+		err = m.client.Create(ctx, &addIPAddr)
+		if err != nil {
+			return false, fmt.Errorf("unable to add IPAddressPool %s: %w", addIPAddr.GetName(), err)
+		}
 	}
 
 	// - if there's no BGPAdvertisement, create the default BGPAdvertisement
