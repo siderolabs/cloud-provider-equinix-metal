@@ -522,32 +522,6 @@ func (l *loadBalancers) addService(ctx context.Context, svc *v1.Service, nodes [
 		if ipReservation != nil {
 			cidr = ipReservation.GetCidr()
 		}
-	}
-
-	svcIPCidr = fmt.Sprintf("%s/%d", svcIP, cidr)
-	if err = l.implementor.AddService(ctx, svc.Namespace, svc.Name, svcIPCidr, n, svc, nodes, loadBalancerName); err != nil {
-		return svcIPCidr, err
-	}
-
-	if l.usesBGP {
-		// Need to ensure the service tag is on the IP for shared IP Services
-		klog.V(2).Infof("service tag %s not found on IP %s, adding", svcTag, svcIP)
-		ips, _, err := l.client.IPAddressesApi.FindIPReservations(context.Background(), l.project).Execute()
-		if err != nil {
-			return svcIPCidr, fmt.Errorf("failed to list project IPs: %w", err)
-		}
-		for _, ip := range ips.GetIpAddresses() {
-			if *ip.IPReservation.Address == svcIP {
-				if !slices.Contains(ip.IPReservation.Tags, svcTag) {
-					tags := append(ip.IPReservation.Tags, svcTag)
-					if _, _, err = l.client.IPAddressesApi.UpdateIPAddress(context.Background(), *ip.IPReservation.Id).IPAssignmentUpdateInput(metal.IPAssignmentUpdateInput{Tags: tags}).Execute(); err != nil {
-						return svcIPCidr, fmt.Errorf("failed to update IP with new service tag: %w", err)
-					}
-				}
-				break
-			}
-		}
-
 		// now need to pass it the nodes
 		for _, node := range nodes {
 			// get the node provider ID
@@ -580,6 +554,31 @@ func (l *loadBalancers) addService(ctx context.Context, svc *v1.Service, nodes [
 				Peers:    peer.GetPeerIps(),
 				Password: peer.GetMd5Password(),
 			})
+		}
+	}
+
+	svcIPCidr = fmt.Sprintf("%s/%d", svcIP, cidr)
+	if err = l.implementor.AddService(ctx, svc.Namespace, svc.Name, svcIPCidr, n, svc, nodes, loadBalancerName); err != nil {
+		return svcIPCidr, err
+	}
+
+	if l.usesBGP {
+		// Need to ensure the service tag is on the IP for shared IP Services
+		klog.V(2).Infof("service tag %s not found on IP %s, adding", svcTag, svcIP)
+		ips, _, err := l.client.IPAddressesApi.FindIPReservations(context.Background(), l.project).Execute()
+		if err != nil {
+			return svcIPCidr, fmt.Errorf("failed to list project IPs: %w", err)
+		}
+		for _, ip := range ips.GetIpAddresses() {
+			if *ip.IPReservation.Address == svcIP {
+				if !slices.Contains(ip.IPReservation.Tags, svcTag) {
+					tags := append(ip.IPReservation.Tags, svcTag)
+					if _, _, err = l.client.IPAddressesApi.UpdateIPAddress(context.Background(), *ip.IPReservation.Id).IPAssignmentUpdateInput(metal.IPAssignmentUpdateInput{Tags: tags}).Execute(); err != nil {
+						return svcIPCidr, fmt.Errorf("failed to update IP with new service tag: %w", err)
+					}
+				}
+				break
+			}
 		}
 	}
 

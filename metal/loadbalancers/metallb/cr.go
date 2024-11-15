@@ -163,8 +163,6 @@ func (m *CRDConfigurer) AddAddressPool(ctx context.Context, add *AddressPool, sv
 		return false, fmt.Errorf("unable to retrieve service: %w", err)
 	}
 
-	updatedPool := false
-
 	// go through the pools and see if we have one that matches
 	// - if same service name return false
 	for _, o := range olds.Items {
@@ -244,18 +242,16 @@ func (m *CRDConfigurer) AddAddressPool(ctx context.Context, add *AddressPool, sv
 			if err != nil {
 				return false, fmt.Errorf("unable to update IPAddressPool %s: %w", o.GetName(), err)
 			}
-			updatedPool = true
+			return true, nil
 		}
 	}
 
-	if !updatedPool {
-		// if we got here, none matched exactly, so add it
-		err = m.client.Create(ctx, &addIPAddr)
-		if err != nil {
-			return false, fmt.Errorf("unable to add IPAddressPool %s: %w", addIPAddr.GetName(), err)
-		}
+	// if we got here, none matched exactly, so add it
+	err = m.client.Create(ctx, &addIPAddr)
+	if err != nil {
+		return false, fmt.Errorf("unable to add IPAddressPool %s: %w", addIPAddr.GetName(), err)
 	}
-
+	
 	// - if there's no BGPAdvertisement, create the default BGPAdvertisement
 	// - if default BGPAdvertisement exists, update IPAddressPools
 	advs, err := m.listBGPAdvertisements(ctx)
